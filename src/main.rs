@@ -16,8 +16,6 @@ const HALF_SEC: Duration = Duration::from_millis(500);
 const USB_VID_CVITEK: u16 = 0x3346;
 const USB_PID_USB_COM: u16 = 0x1000;
 
-const SRAM_BASE: usize = 0x0000_0000;
-
 #[allow(non_camel_case_types)]
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 enum Board {
@@ -39,8 +37,11 @@ enum Command {
     /// Write file to SRAM and execute
     #[clap(verbatim_doc_comment)]
     Run {
-        #[clap(long, short, action)]
-        main: bool,
+        file_name: String,
+    },
+    /// Load file to RAM, address defined by code running on the SoC
+    #[clap(verbatim_doc_comment)]
+    Load {
         file_name: String,
     },
 }
@@ -113,11 +114,7 @@ fn main() {
     env_logger::init();
 
     match cmd {
-        Command::Run {
-            file_name,
-            main: is_main,
-        } => {
-            let addr = SRAM_BASE;
+        Command::Load { file_name } => {
             let mut payload = std::fs::read(file_name).unwrap();
 
             let sz = payload.len();
@@ -127,52 +124,70 @@ fn main() {
                 (sz / IMG_ALIGN + 1) * IMG_ALIGN
             };
             payload.truncate(aligned);
-            println!("ℹ️ Payload size: {sz}; aligned: {aligned}");
-
-            if is_main {
-                println!("Sending as main");
-            } else {
-                println!("Sending as FSBL");
-                let checksum = CRC.checksum(&payload);
-                info!("Payload checksum: {checksum:04x}");
-
-                let checksum = checksum.to_le_bytes();
-                let param1 = Param1 {
-                    bl2_img_size: (payload.len() as u32).to_le_bytes(),
-                    bl2_img_cksum: [checksum[0], checksum[1], 0xfe, 0xca],
-                    ..Default::default()
-                };
-
-                let checksum = param1.checksum();
-                info!("Header checksum: {checksum:04x}");
-
-                let checksum = checksum.to_le_bytes();
-                let header = crate::protocol::CVITekHeader {
-                    param1_checksum: [checksum[0], checksum[1], 0xfe, 0xca],
-                    param1,
-                    ..Default::default()
-                };
-                info!("Header {header:02x?}");
-
-                println!("⏳ Waiting for CVITek USB devices...");
-                let mut port = connect();
-                crate::protocol::send_magic(&mut port);
-                std::thread::sleep(Duration::from_millis(500));
-
-                println!("➡️ send HEADER...");
-                let mut port = connect();
-
-                crate::protocol::send_file(&mut port, header.to_slice());
-                crate::protocol::send_flag(&mut port);
-                crate::protocol::send_break(&mut port);
-                std::thread::sleep(HALF_SEC);
-            }
+            println!("ℹ️ Size: {sz}; aligned: {aligned}");
 
             println!("⏳ Waiting for CVITek USB devices...");
             let mut port = connect();
             crate::protocol::send_magic(&mut port);
 
-            println!("➡️ send PAYLOAD...");
+            println!("➡️ Send file...");
+            crate::protocol::send_file(&mut port, &payload);
+            crate::protocol::send_flag(&mut port);
+            crate::protocol::send_break(&mut port);
+
+            println!("🎉 Done. ");
+        }
+        Command::Run { file_name } => {
+            let mut payload = std::fs::read(file_name).unwrap();
+
+            let sz = payload.len();
+            let aligned = if sz % IMG_ALIGN == 0 {
+                sz
+            } else {
+                (sz / IMG_ALIGN + 1) * IMG_ALIGN
+            };
+            payload.truncate(aligned);
+            println!("ℹ️ Size: {sz}; aligned: {aligned}");
+
+            let checksum = CRC.checksum(&payload);
+            info!("Checksum: {checksum:04x}");
+
+            let checksum = checksum.to_le_bytes();
+            let param1 = Param1 {
+                bl2_img_size: (payload.len() as u32).to_le_bytes(),
+                bl2_img_cksum: [checksum[0], checksum[1], 0xfe, 0xca],
+                ..Default::default()
+            };
+
+            let checksum = param1.checksum();
+            info!("Header checksum: {checksum:04x}");
+
+            let checksum = checksum.to_le_bytes();
+            let header = crate::protocol::CVITekHeader {
+                param1_checksum: [checksum[0], checksum[1], 0xfe, 0xca],
+                param1,
+                ..Default::default()
+            };
+            info!("Header {header:02x?}");
+
+            println!("⏳ Waiting for CVITek USB devices...");
+            let mut port = connect();
+            crate::protocol::send_magic(&mut port);
+            std::thread::sleep(Duration::from_millis(500));
+
+            println!("➡️ Send header...");
+            let mut port = connect();
+
+            crate::protocol::send_file(&mut port, header.to_slice());
+            crate::protocol::send_flag(&mut port);
+            crate::protocol::send_break(&mut port);
+            std::thread::sleep(HALF_SEC);
+
+            println!("⏳ Waiting for CVITek USB devices...");
+            let mut port = connect();
+            crate::protocol::send_magic(&mut port);
+
+            println!("➡️ Send file...");
             crate::protocol::send_file(&mut port, &payload);
             crate::protocol::send_flag(&mut port);
             crate::protocol::send_break(&mut port);
