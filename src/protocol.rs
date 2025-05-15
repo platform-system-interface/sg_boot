@@ -82,6 +82,7 @@ const RESPONSE_SIZE: usize = 16;
 // CRC variant figured out by trying all the CRC16s offered by crc crate :D
 const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
 
+// TODO: struct
 const RSP_CRC16_HI_OFFSET: usize = 2;
 const RSP_CRC16_LO_OFFSET: usize = 3;
 const RSP_TOKEN_OFFSET: usize = 6;
@@ -89,10 +90,8 @@ const RSP_TOKEN_OFFSET: usize = 6;
 fn check_response(data: &[u8], resp: &[u8]) {
     info!("response: {resp:x?}");
 
-    let crc_hi = resp[RSP_CRC16_HI_OFFSET];
-    let crc_lo = resp[RSP_CRC16_LO_OFFSET];
-    let rsp_checksum = ((crc_hi as u16) << 8) | crc_lo as u16;
-
+    let crc_bytes = [resp[RSP_CRC16_LO_OFFSET], resp[RSP_CRC16_HI_OFFSET]];
+    let rsp_checksum = u16::from_le_bytes(crc_bytes);
     let exp_checksum = CRC.checksum(data);
 
     if exp_checksum != rsp_checksum {
