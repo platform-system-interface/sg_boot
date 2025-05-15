@@ -262,6 +262,11 @@ pub struct Param1 {
     pub blcp_img_sig: [u8; 512],
 }
 
+const CONF_SIZE: u32 = 0x0000_02f8;
+const NO_CHECKSUM: u32 = 0xcafe_0000;
+const BLCP_ADDR: u32 = 0x0520_0200;
+const PARAM2_LOAD_ADDR: u32 = 0x0000_2a00;
+
 impl Default for Param1 {
     fn default() -> Self {
         Param1 {
@@ -269,19 +274,19 @@ impl Default for Param1 {
             nor_info: ones(),
             fip_flags: zeroes(),
             // ...
-            chip_conf_size: 0x2f8u32.to_le_bytes(),
+            chip_conf_size: CONF_SIZE.to_le_bytes(),
             // BLCP
-            blcp_img_cksum: 0xcafe0000u32.to_le_bytes(),
+            blcp_img_cksum: NO_CHECKSUM.to_le_bytes(),
             blcp_img_size: zeroes(),
-            blcp_img_runaddr: 0x0520_0200u32.to_le_bytes(), // const
+            blcp_img_runaddr: BLCP_ADDR.to_le_bytes(),
             blcp_param_loadaddr: zeroes(),
             blcp_param_size: zeroes(),
             // BL2
-            bl2_img_cksum: 0xcafe0000u32.to_le_bytes(), // TODO: fill in
-            bl2_img_size: 0u32.to_le_bytes(),           // TODO: fill in
+            bl2_img_cksum: NO_CHECKSUM.to_le_bytes(),
+            bl2_img_size: zeroes(),
             //
             bld_img_size: zeroes(),
-            param2_loadaddr: 0x0000_2a00u32.to_le_bytes(),
+            param2_loadaddr: PARAM2_LOAD_ADDR.to_le_bytes(),
             reserved1: zeroes(),
             chip_conf: [
                 0x0c, 0x00, 0x00, 0x0e, //
