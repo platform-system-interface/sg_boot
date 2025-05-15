@@ -101,7 +101,7 @@ fn check_response(data: &[u8], resp: &[u8]) {
     info!("checksum {rsp_checksum:04x} == {exp_checksum:04x}");
 
     let rsp_token = resp[RSP_TOKEN_OFFSET];
-    info!("token: {rsp_token}");
+    info!("token: {rsp_token:02x}");
 }
 
 fn send(port: &mut Port, data: &[u8]) {
