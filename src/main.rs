@@ -66,23 +66,18 @@ fn poll_dev() -> String {
     let now = time::Instant::now();
 
     while time::Instant::now() <= now + POLL_TIMEOUT {
-        match serialport::available_ports() {
-            Ok(ports) => {
-                for p in ports {
-                    let name = p.port_name;
-                    if let serialport::SerialPortType::UsbPort(info) = p.port_type {
-                        if info.vid == USB_VID_CVITEK && info.pid == USB_PID_USB_COM {
-                            print_port_info(&info);
-                            return name;
-                        }
+        if let Ok(ports) = serialport::available_ports() {
+            for p in ports {
+                let name = p.port_name;
+                if let serialport::SerialPortType::UsbPort(info) = p.port_type {
+                    if info.vid == USB_VID_CVITEK && info.pid == USB_PID_USB_COM {
+                        print_port_info(&info);
+                        return name;
                     }
-                    thread::sleep(POLL_PERIOD);
                 }
             }
-            Err(_e) => {
-                thread::sleep(POLL_PERIOD);
-            }
         }
+        thread::sleep(POLL_PERIOD);
     }
     panic!("timeout waiting for CVITek USB device");
 }
