@@ -126,15 +126,21 @@ pub fn send_magic(port: &mut Port) {
 
 pub fn send_file(port: &mut Port, f: &[u8]) {
     for (i, chunk) in f.chunks(CHUNK_SIZE).enumerate() {
+        // every 512K
+        // FIXME: this currently shows after all chunks are sent only
+        if i % (512 * 1024 / CHUNK_SIZE) == 0 {
+            print!(".");
+        }
         let h = Header {
             cmd: CVI_USB_TX_DATA_TO_RAM,
             size: chunk.len() as u16,
             addr: (i * CHUNK_SIZE) as u64,
         };
-        debug!("{h:?}");
+        debug!("\n{h:?}");
         let data = concat(&h.to_slice(), chunk);
         send(port, &data);
     }
+    println!();
 }
 
 pub fn send_flag(port: &mut Port) {
