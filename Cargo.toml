@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.4.6", features = ["derive"] }
-clap-num = "1.0.2"
+clap = { version = "4.5.47", features = ["derive"] }
+clap-num = "1.2.0"
 crc = "*"
 env_logger = "0.9"
-log = "0.4.17"
-serialport = "4.7.1"
+log = "0.4.28"
+serialport = "4.7.3"
