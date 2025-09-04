@@ -1,11 +1,18 @@
 use log::{debug, info};
 
-const NO_MAGIC: [u8; 2] = [0x2c, 0x08];
+pub const IMG_ALIGN: usize = 512;
 
-pub const SUCCESS: usize = 0;
-pub const FAIL: usize = 1;
+// TODO
+// pub const SUCCESS: usize = 0;
+// pub const FAIL: usize = 1;
 
 const CHUNK_SIZE: usize = 256;
+
+const NO_MAGIC: [u8; 2] = [0x2c, 0x08];
+
+// Memory addresses
+const DDR_FIP_ADDR: u64 = 0x8080_0000;
+const IMG_ADDR: u64 = 0x8394_0000;
 
 const EFUSE_BASE: u64 = 0x0E00_0000;
 const BOOT_SRC_ADDR: u64 = EFUSE_BASE + 0x0004;
@@ -16,20 +23,16 @@ const BOOT_SRC_SD: [u8; 4] = *b"2NGM";
 // CV181x only?
 const BOOT_SRC_UART: [u8; 4] = *b"3NGM";
 
-// Memory addresses
-pub const DDR_FIP_ADDR: u64 = 0x8080_0000;
-pub const IMG_ADDR: u64 = 0x8394_0000;
-
-// ROM USB command;
-pub const CVI_USB_TX_DATA_TO_RAM: u8 = 0;
-pub const CVI_USB_TX_FLAG: u8 = 1;
-// Common command;
-pub const CV_USB_BREAK: u8 = 2;
-pub const CV_USB_KEEP_DL: u8 = 3;
-pub const CV_USB_UBREAK: u8 = 4;
-pub const CV_USB_PRG_CMD: u8 = 6;
-pub const CVI_USB_REBOOT: u8 = 22;
-pub const CVI_USB_PROGRAM: u8 = 0x83;
+// ROM USB commands
+const CVI_USB_TX_DATA_TO_RAM: u8 = 0;
+const CVI_USB_TX_FLAG: u8 = 1;
+// Common commands
+const CV_USB_BREAK: u8 = 2;
+const CV_USB_KEEP_DL: u8 = 3;
+const CV_USB_UBREAK: u8 = 4;
+const CV_USB_PRG_CMD: u8 = 6;
+const CVI_USB_REBOOT: u8 = 22;
+const CVI_USB_PROGRAM: u8 = 0x83;
 
 pub const MSG_TOKEN_OFFSET: usize = 0;
 
@@ -80,7 +83,7 @@ const BREAK_HEADER: Header = Header {
 const RESPONSE_SIZE: usize = 16;
 
 // CRC variant figured out by trying all the CRC16s offered by crc crate :D
-const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
+pub const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
 
 // TODO: struct
 const RSP_CRC16_HI_OFFSET: usize = 2;
@@ -124,8 +127,14 @@ pub fn send_magic(port: &mut Port) {
     send(port, &data);
 }
 
-pub fn send_file(port: &mut Port, f: &[u8]) {
-    for (i, chunk) in f.chunks(CHUNK_SIZE).enumerate() {
+pub fn send_payload(port: &mut Port, payload: &[u8]) {
+    send_data(port, payload);
+    send_flag(port);
+    send_break(port);
+}
+
+fn send_data(port: &mut Port, data: &[u8]) {
+    for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
         // every 512K
         // FIXME: this currently shows after all chunks are sent only
         if i % (512 * 1024 / CHUNK_SIZE) == 0 {
@@ -143,17 +152,15 @@ pub fn send_file(port: &mut Port, f: &[u8]) {
     println!();
 }
 
-pub fn send_flag(port: &mut Port) {
+fn send_flag(port: &mut Port) {
     let data = concat(&BOOT_SRC_USB_HEADER.to_slice(), &BOOT_SRC_USB);
     send(port, &data);
 }
 
-pub fn send_break(port: &mut Port) {
+fn send_break(port: &mut Port) {
     let data = BREAK_HEADER.to_slice();
     send(port, &data);
 }
-
-pub const IMG_ALIGN: usize = 512;
 
 fn zeroes<const N: usize>() -> [u8; N] {
     [0u8; N]

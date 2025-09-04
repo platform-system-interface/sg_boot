@@ -3,15 +3,20 @@ use log::info;
 use std::time::Duration;
 use std::{thread, time};
 
-use crate::protocol::Param1;
-
 mod protocol;
+
+use protocol::{send_magic, CVITekHeader, Param1, CRC, IMG_ALIGN};
 
 // two minutes should be plenty
 const POLL_TIMEOUT: Duration = Duration::from_secs(120);
 const POLL_PERIOD: Duration = Duration::from_millis(50);
 const TEN_SECS: Duration = Duration::from_secs(10);
 const HALF_SEC: Duration = Duration::from_millis(500);
+
+const KILO: usize = 1024;
+const MEGA: usize = 1024 * 1024;
+// Transfer rate is about 167 KB/s based on real measurements.
+const RATE: usize = 167;
 
 const USB_VID_CVITEK: u16 = 0x3346;
 const USB_PID_USB_COM: u16 = 0x1000;
@@ -101,8 +106,40 @@ fn connect() -> std::boxed::Box<dyn serialport::SerialPort> {
     panic!("Failed to open serial port {dev}");
 }
 
-const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
-use crate::protocol::IMG_ALIGN;
+fn align_payload(payload: &mut Vec<u8>) {
+    let sz = payload.len();
+    let aligned = if sz % IMG_ALIGN == 0 {
+        sz
+    } else {
+        (sz / IMG_ALIGN + 1) * IMG_ALIGN
+    };
+    payload.truncate(aligned);
+    println!("ℹ️ Size: {sz}; aligned: {aligned}");
+
+    if aligned > MEGA {
+        let kb = aligned / KILO;
+        let s = kb / RATE;
+        println!("Expect this to take about {s}s ({RATE}KB/s).");
+    }
+}
+
+fn send_payload(payload: &[u8]) {
+    let now = time::SystemTime::now();
+    println!("⏳ Waiting for CVITek USB devices...");
+    let mut port = connect();
+    send_magic(&mut port);
+
+    println!("➡️ Send file...");
+    protocol::send_payload(&mut port, &payload);
+
+    println!("🎉 Done. ");
+
+    match now.elapsed() {
+        Ok(elapsed) => println!("This took {} seconds.", elapsed.as_secs()),
+        // the system clock went backwards!
+        _ => {}
+    }
+}
 
 fn main() {
     let cmd = Cli::parse().cmd;
@@ -111,38 +148,12 @@ fn main() {
     match cmd {
         Command::Load { file_name } => {
             let mut payload = std::fs::read(file_name).unwrap();
-
-            let sz = payload.len();
-            let aligned = if sz % IMG_ALIGN == 0 {
-                sz
-            } else {
-                (sz / IMG_ALIGN + 1) * IMG_ALIGN
-            };
-            payload.truncate(aligned);
-            println!("ℹ️ Size: {sz}; aligned: {aligned}");
-
-            println!("⏳ Waiting for CVITek USB devices...");
-            let mut port = connect();
-            crate::protocol::send_magic(&mut port);
-
-            println!("➡️ Send file...");
-            crate::protocol::send_file(&mut port, &payload);
-            crate::protocol::send_flag(&mut port);
-            crate::protocol::send_break(&mut port);
-
-            println!("🎉 Done. ");
+            align_payload(&mut payload);
+            send_payload(&payload);
         }
         Command::Run { file_name } => {
             let mut payload = std::fs::read(file_name).unwrap();
-
-            let sz = payload.len();
-            let aligned = if sz % IMG_ALIGN == 0 {
-                sz
-            } else {
-                (sz / IMG_ALIGN + 1) * IMG_ALIGN
-            };
-            payload.truncate(aligned);
-            println!("ℹ️ Size: {sz}; aligned: {aligned}");
+            align_payload(&mut payload);
 
             let checksum = CRC.checksum(&payload);
             info!("Checksum: {checksum:04x}");
@@ -158,7 +169,7 @@ fn main() {
             info!("Header checksum: {checksum:04x}");
 
             let checksum = checksum.to_le_bytes();
-            let header = crate::protocol::CVITekHeader {
+            let header = CVITekHeader {
                 param1_checksum: [checksum[0], checksum[1], 0xfe, 0xca],
                 param1,
                 ..Default::default()
@@ -167,27 +178,15 @@ fn main() {
 
             println!("⏳ Waiting for CVITek USB devices...");
             let mut port = connect();
-            crate::protocol::send_magic(&mut port);
-            std::thread::sleep(Duration::from_millis(500));
+            send_magic(&mut port);
+            std::thread::sleep(HALF_SEC);
 
             println!("➡️ Send header...");
             let mut port = connect();
-
-            crate::protocol::send_file(&mut port, header.to_slice());
-            crate::protocol::send_flag(&mut port);
-            crate::protocol::send_break(&mut port);
+            protocol::send_payload(&mut port, header.to_slice());
             std::thread::sleep(HALF_SEC);
 
-            println!("⏳ Waiting for CVITek USB devices...");
-            let mut port = connect();
-            crate::protocol::send_magic(&mut port);
-
-            println!("➡️ Send file...");
-            crate::protocol::send_file(&mut port, &payload);
-            crate::protocol::send_flag(&mut port);
-            crate::protocol::send_break(&mut port);
-
-            println!("🎉 Done. ");
+            send_payload(&payload);
         }
         Command::Info => {
             println!("nothing to see here :)");
